@@ -302,7 +302,7 @@ export const getUserProfile = async (): Promise<UserProfile> => {
 
 export const updateProfile = async (data: { name: string; email: string }): Promise<UserProfile> => {
   try {
-    const response = await api.put<UserProfile>('/api/profile', data);
+    const response = await api.put<UserProfile>('/api/user', data);
     return response.data;
   } catch (error) {
     console.error('Update Profile Error:', error);
@@ -360,41 +360,20 @@ export const addJobUrl = async ({
   url: string;
   job_title: string;
   company_name: string;
-}) => {
+}): Promise<JobURL> => {
   try {
+    console.log('API addJobUrl request:', JSON.stringify({ url, job_title, company_name }, null, 2));
     const response = await api.post('/api/jobs/urls', { 
       url,
       job_title,
       company_name
     });
-    return {
-      success: true,
-      data: response.data
-    };
+    console.log('API addJobUrl response:', JSON.stringify(response.data, null, 2));
+    return response.data.data;
   } catch (error) {
     console.error('Error adding job URL:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to add job URL'
-    };
-  }
-};
-
-export const createJobURL = async (data: { 
-  url: string; 
-  job_title: string; 
-  company_name: string; 
-}): Promise<JobURL> => {
-  try {
-    console.log('API createJobURL request:', JSON.stringify(data, null, 2));
-    const response = await api.post('/api/job-urls', data);
-    console.log('API createJobURL response:', JSON.stringify(response.data, null, 2));
-    return response.data;
-  } catch (error: unknown) {
     if (axios.isAxiosError(error)) {
-      console.error('Create Job URL Error:', error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
-    } else {
-      console.error('Unexpected Create Job URL Error:', error);
+      console.error('Error details:', error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
     }
     throw error;
   }

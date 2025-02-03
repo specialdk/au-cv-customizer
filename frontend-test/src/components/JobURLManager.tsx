@@ -24,13 +24,14 @@ import {
   MenuItem
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { getJobURLs, createJobURL, deleteJobURL } from '../services/api';
+import { getJobURLs, addJobUrl, deleteJobURL } from '../services/api';
 
 interface JobURL {
   id: number;
   url: string;
   job_title: string;
   company_name: string;
+  created_at: string;
 }
 
 interface JobURLManagerProps {
@@ -74,7 +75,7 @@ const JobURLManager: React.FC<JobURLManagerProps> = ({ onURLAdded, onJobCountCha
 
     try {
       setLoading(true);
-      await createJobURL({
+      await addJobUrl({
         url: newUrl,
         job_title: jobTitle,
         company_name: companyName

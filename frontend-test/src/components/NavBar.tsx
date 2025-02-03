@@ -9,8 +9,8 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Avatar,
 } from '@mui/material';
-import { AccountCircle } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
 const NavBar: React.FC = () => {
@@ -36,6 +36,9 @@ const NavBar: React.FC = () => {
     return null;
   }
 
+  // Get the first letter of the user's name for the avatar
+  const userInitial = user.name ? user.name.charAt(0).toUpperCase() : '?';
+
   return (
     <AppBar position="static">
       <Toolbar>
@@ -51,7 +54,9 @@ const NavBar: React.FC = () => {
             onClick={handleMenu}
             color="inherit"
           >
-            <AccountCircle />
+            <Avatar sx={{ width: 32, height: 32, bgcolor: 'secondary.main' }}>
+              {userInitial}
+            </Avatar>
           </IconButton>
           <Menu
             id="menu-appbar"

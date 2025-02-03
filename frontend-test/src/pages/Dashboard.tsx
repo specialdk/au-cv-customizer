@@ -127,7 +127,7 @@ const Dashboard: React.FC = () => {
           setJobs(jobsResponse.data.map((job: any, index: number) => ({
             id: index,
             title: job.job_title || 'Untitled Position',
-            company: job.company || 'Company Not Specified',
+            company: job.company_name || 'Company Not Specified',
             addedAt: formatDate(job.created_at)
           })));
         }
@@ -188,23 +188,19 @@ const Dashboard: React.FC = () => {
         company_name: company
       });
       
-      if (response.success && response.data) {
-        setJobs([
-          {
-            id: response.data.id,
-            title: response.data.job_title,
-            company: response.data.company,
-            addedAt: formatDate(response.data.created_at)
-          },
-          ...jobs
-        ]);
-        setJobUrl('');
-        setJobTitle('');
-        setCompany('');
-        setMessage('Job URL added successfully!');
-      } else {
-        setError(response.error || 'Failed to add job URL');
-      }
+      setJobs([
+        {
+          id: response.id,
+          title: response.job_title,
+          company: response.company_name,
+          addedAt: formatDate(response.created_at)
+        },
+        ...jobs
+      ]);
+      setJobUrl('');
+      setJobTitle('');
+      setCompany('');
+      setMessage('Job URL added successfully!');
     } catch (err) {
       console.error('Error adding job URL:', err);
       setError(err instanceof Error ? err.message : 'Error adding job URL');

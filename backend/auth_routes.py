@@ -79,7 +79,7 @@ def init_auth_routes(app):
             logger.error(f'[login] Error: {str(e)}')
             return jsonify({'error': str(e)}), 500
 
-    @app.route('/api/user', methods=['GET'])
+    @app.route('/api/profile', methods=['GET'])
     @jwt_required()
     def get_user():
         try:
