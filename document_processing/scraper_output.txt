@@ -1,0 +1,17 @@
+Job Scraper Test Results
+======================
+
+URL: https://www.seek.com.au/job/81587432/apply?sol=85faf37ebb620733fe426b1bbbc779a3231d9ad18
+---------------------------------------------------------------------------------------------
+Title: Customer Service Officer - Administration
+Company: Trinity Fire Services Pty Ltd
+Location: Cairns, Cairns & Far North QLD
+
+Sections:
+
+DESCRIPTION
+===========
+Position: Customer Service Officer About Us:At Trinity Fire Services, we pride ourselves on being a small family business with a strong team spirit. We value work/life balance and offer flexibility in work hours. Our commitment to excellence is reflected in our passion for protecting lives, property, and assets.Key Responsibilities:Job Scheduling: Efficiently coordinate and schedule servicing tasks.Invoicing and Quotations: Manage the invoicing process and provide accurate quotations.Customer Interaction: Respond promptly to customer queries via emails and phone calls.Administrative Support: Handle data entry, records management, and the preparation and distribution of reports and correspondence.Objective Quality Evidence: Prepare comprehensive job reports as part of our commitment to quality assurance.About You:We are looking for a candidate who possesses:A passion for delivering outstanding customer service.Strong team spirit and the ability to build lasting customer relationships.Experience in job management and invoicing.Excellent written and verbal communication skills.High attention to detail and computer proficiency.Knowledge of local area - required for job schedulingThe ability to work efficiently in a fast-paced environment with competing priorities.What We Offer:In return for your commitment, dedication, and passion, we provide:Permanent Part Time Position 30-38 hours P/W Work from home or in office/ Option for full remoteFlexible Work PracticesIf you are excited about contributing to the protection of lives, property, and assets, and you possess the skills and attitude we are looking for, we invite you to apply.Take the next step in your career with Trinity Fire Services. Join us in making a meaningful impact in the world of customer service and safety.Apply Now!
+
+================================================================================
+
