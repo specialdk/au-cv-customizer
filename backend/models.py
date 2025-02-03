@@ -11,6 +11,7 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     documents = db.relationship('Document', backref='owner', lazy=True)
     applications = db.relationship('Application', backref='owner', lazy=True)
+    job_resources = db.relationship('JobResource', backref='owner', lazy=True)
 
 class Document(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -30,3 +31,16 @@ class Application(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     cv_id = db.Column(db.Integer, db.ForeignKey('document.id'))
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+class JobResource(db.Model):
+    """Model for storing job postings."""
+    id = db.Column(db.Integer, primary_key=True)
+    url = db.Column(db.String(500), nullable=False)
+    title = db.Column(db.String(200))
+    company = db.Column(db.String(200))
+    location = db.Column(db.String(200))
+    description = db.Column(db.Text)
+    requirements = db.Column(db.Text)
+    responsibilities = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)

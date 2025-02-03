@@ -3,7 +3,8 @@ from werkzeug.utils import secure_filename
 import os
 import logging
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Document
+from models import db, Document, JobResource
+from document_processing.job_scraper import JobScraper
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ def init_routes(app):
         """Upload a document (CV)."""
         try:
             current_user = get_jwt_identity()
+            logger.info(f'[upload_document] Current user ID: {current_user}')
+            logger.info(f'[upload_document] Request files: {request.files}')
+            logger.info(f'[upload_document] Request headers: {dict(request.headers)}')
             
             # Check if file was uploaded
             if 'file' not in request.files:
@@ -99,4 +103,140 @@ def init_routes(app):
         except Exception as e:
             logger.error(f'[get_document_status] Error: {str(e)}')
             logger.exception(e)
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/jobs/parse', methods=['POST'])
+    @jwt_required()
+    def parse_job():
+        """Parse a job posting URL."""
+        try:
+            data = request.get_json()
+            url = data.get('url')
+            
+            if not url:
+                return jsonify({'error': 'URL is required'}), 400
+                
+            # Initialize scraper
+            scraper = JobScraper()
+            
+            # Scrape job posting
+            job_data = scraper.scrape_job_posting(url)
+            
+            # Store in database
+            job = JobResource(
+                url=url,
+                title=job_data.get('title', ''),
+                company=job_data.get('company', ''),
+                location=job_data.get('location', ''),
+                description=job_data.get('description', ''),
+                requirements=job_data.get('sections', {}).get('requirements', ''),
+                responsibilities=job_data.get('sections', {}).get('responsibilities', ''),
+                user_id=get_jwt_identity()
+            )
+            
+            db.session.add(job)
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Job posting parsed successfully',
+                'job': {
+                    'id': job.id,
+                    'url': job.url,
+                    'title': job.title,
+                    'company': job.company,
+                    'location': job.location,
+                    'requirements': job.requirements,
+                    'responsibilities': job.responsibilities
+                }
+            }), 201
+            
+        except Exception as e:
+            logger.error(f'[parse_job] Error: {str(e)}')
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/documents/cv', methods=['GET'])
+    @jwt_required()
+    def get_user_cv():
+        """Get the user's most recent CV."""
+        try:
+            current_user = get_jwt_identity()
+            
+            # Get user's most recent CV
+            cv = Document.query.filter_by(
+                user_id=current_user,
+                type='cv'
+            ).order_by(Document.created_at.desc()).first()
+            
+            if not cv:
+                return jsonify({'error': 'No CV found'}), 404
+                
+            return jsonify({
+                'id': cv.id,
+                'filename': cv.original_filename,
+                'uploadTime': cv.created_at.isoformat()
+            })
+            
+        except Exception as e:
+            logger.error(f'[get_user_cv] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/jobs', methods=['GET'])
+    @jwt_required()
+    def get_user_jobs():
+        """Get all jobs added by the user."""
+        try:
+            current_user = get_jwt_identity()
+            
+            # Get user's jobs
+            jobs = JobResource.query.filter_by(
+                user_id=current_user
+            ).order_by(JobResource.created_at.desc()).all()
+            
+            return jsonify([{
+                'id': job.id,
+                'url': job.url,
+                'title': job.title,
+                'company': job.company,
+                'created_at': job.created_at.isoformat()
+            } for job in jobs])
+            
+        except Exception as e:
+            logger.error(f'[get_user_jobs] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/jobs/urls', methods=['POST'])
+    @jwt_required()
+    def add_job_url():
+        """Add a new job URL."""
+        try:
+            current_user = get_jwt_identity()
+            data = request.get_json()
+            url = data.get('url')
+            
+            if not url:
+                return jsonify({'error': 'URL is required'}), 400
+                
+            # Create new job resource
+            job = JobResource(
+                url=url,
+                user_id=current_user,
+                title='New Position',  # We'll update this later with scraping
+                company='Company Name'  # We'll update this later with scraping
+            )
+            
+            db.session.add(job)
+            db.session.commit()
+            
+            return jsonify({
+                'id': job.id,
+                'url': job.url,
+                'title': job.title,
+                'company': job.company,
+                'created_at': job.created_at.isoformat()
+            }), 201
+            
+        except Exception as e:
+            logger.error(f'[add_job_url] Error: {str(e)}')
+            db.session.rollback()
             return jsonify({'error': str(e)}), 500

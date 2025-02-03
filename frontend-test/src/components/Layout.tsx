@@ -8,9 +8,9 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Avatar,
 } from '@mui/material';
 import {
-  AccountCircle as AccountCircleIcon,
   Menu as MenuIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,7 +21,7 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
@@ -38,6 +38,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     logout();
     navigate('/login');
   };
+
+  const handleProfile = () => {
+    handleClose();
+    navigate('/profile');
+  };
+
+  // Get user's initial for avatar
+  const userInitial = user?.name ? user.name[0].toUpperCase() : '?';
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -64,7 +72,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               onClick={handleMenu}
               color="inherit"
             >
-              <AccountCircleIcon />
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'secondary.main' }}>
+                {userInitial}
+              </Avatar>
             </IconButton>
             <Menu
               id="menu-appbar"
@@ -81,7 +91,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               open={Boolean(anchorEl)}
               onClose={handleClose}
             >
-              <MenuItem onClick={handleClose}>Profile</MenuItem>
+              <MenuItem onClick={handleProfile}>Profile</MenuItem>
               <MenuItem onClick={handleLogout}>Logout</MenuItem>
             </Menu>
           </div>

@@ -536,6 +536,54 @@ export const testJobParse = async (jobUrl: string) => {
   }
 };
 
+export const getUserCV = async () => {
+  try {
+    const response = await api.get('/api/documents/cv');
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Error getting user CV:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get CV'
+    };
+  }
+};
+
+export const getUserJobs = async () => {
+  try {
+    const response = await api.get('/api/jobs');
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Error getting user jobs:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get jobs'
+    };
+  }
+};
+
+export const addJobUrl = async ({ url }: { url: string }) => {
+  try {
+    const response = await api.post('/api/jobs/urls', { url });
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Error adding job URL:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to add job URL'
+    };
+  }
+};
+
 // Initialize auth header if token exists
 const token = getAuthToken();
 if (token) {
