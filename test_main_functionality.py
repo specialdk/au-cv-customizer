@@ -1,10 +1,32 @@
 import requests
 import json
 import os
+import time
 
 BASE_URL = 'http://localhost:5000/api'
 
+def wait_for_server(timeout=30):
+    """Wait for the server to be ready."""
+    print("\nWaiting for server to be ready...")
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get('http://localhost:5000/api/health')
+            if response.status_code == 200:
+                print("Server is ready!")
+                return True
+        except requests.exceptions.ConnectionError:
+            print(".", end="", flush=True)
+            time.sleep(1)
+    print("\nServer did not become ready in time")
+    return False
+
 def test_auth_and_upload():
+    # Wait for server to be ready
+    if not wait_for_server():
+        print("Cannot proceed with tests as server is not ready")
+        return
+
     # 1. Register
     register_data = {
         'email': 'test2@example.com',
@@ -39,6 +61,10 @@ def test_auth_and_upload():
     }
     
     print("\n3. Testing CV Upload...")
+    # Create a test CV file
+    with open('test_cv.txt', 'w') as f:
+        f.write("Test CV Content\nSkills: Python, React\nExperience: 5 years")
+    
     with open('test_cv.txt', 'rb') as f:
         files = {'file': ('test_cv.txt', f, 'text/plain')}
         upload_response = requests.post(
@@ -55,7 +81,7 @@ def test_auth_and_upload():
     # 4. Parse Job URL
     print("\n4. Testing Job Parsing...")
     job_data = {
-        'url': 'https://www.seek.com.au/job/72729195'  # Real job posting
+        'url': 'https://www.seek.com.au/job/72729195'
     }
     job_response = requests.post(
         f'{BASE_URL}/jobs/parse',

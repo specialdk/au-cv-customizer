@@ -1,10 +1,22 @@
-from app import app, db
+import os
+import sys
 
-def init_database():
+# Add project root to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+
+from backend.app import app
+from backend.extensions import db
+from backend.models import User, Document, Application
+
+def init_db():
+    """Initialize the database by dropping all tables and recreating them."""
     with app.app_context():
-        # Create all database tables
+        # Drop all tables
+        db.drop_all()
+        # Create all tables
         db.create_all()
         print("Database initialized successfully!")
 
 if __name__ == '__main__':
-    init_database()
+    init_db()

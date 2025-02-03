@@ -1,10 +1,10 @@
-from flask import request, jsonify, current_app
-from werkzeug.utils import secure_filename
 import os
-import logging
+from flask import request, jsonify, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from models import db, Document, JobResource
-from document_processing.job_scraper import JobScraper
+from werkzeug.utils import secure_filename
+import logging
+from backend.database import db
+from backend.models import User, Document, Application
 
 logger = logging.getLogger(__name__)
 
@@ -18,225 +18,341 @@ def init_routes(app):
     @app.route('/api/documents/upload', methods=['POST'])
     @jwt_required()
     def upload_document():
-        """Upload a document (CV)."""
         try:
-            current_user = get_jwt_identity()
-            logger.info(f'[upload_document] Current user ID: {current_user}')
-            logger.info(f'[upload_document] Request files: {request.files}')
-            logger.info(f'[upload_document] Request headers: {dict(request.headers)}')
-            
-            # Check if file was uploaded
             if 'file' not in request.files:
-                logger.error('[upload_document] No file part in request')
                 return jsonify({'error': 'No file part'}), 400
                 
             file = request.files['file']
-            
-            # Check if a file was selected
             if file.filename == '':
-                logger.error('[upload_document] No selected file')
                 return jsonify({'error': 'No selected file'}), 400
                 
-            # Check file type
             if not allowed_file(file.filename):
-                logger.error(f'[upload_document] Invalid file type: {file.filename}')
                 return jsonify({'error': 'Invalid file type. Allowed types: ' + ', '.join(ALLOWED_EXTENSIONS)}), 400
                 
-            # Secure the filename
-            filename = secure_filename(file.filename)
-            
-            # Create a unique filename to avoid collisions
-            base_name, extension = os.path.splitext(filename)
-            storage_filename = f"{base_name}_{current_user}{extension}"
-            storage_path = os.path.join(current_app.config['UPLOAD_FOLDER'], storage_filename)
-            
-            # Save the file
-            file.save(storage_path)
-            logger.info(f'[upload_document] File saved to {storage_path}')
-            
-            # Create document record
-            document = Document(
-                filename=filename,
-                original_filename=filename,
-                storage_path=storage_path,
-                user_id=current_user,
-                type='cv'  # Set document type
-            )
-            
-            db.session.add(document)
-            db.session.commit()
-            logger.info(f'[upload_document] Document record created with ID: {document.id}')
-            
-            return jsonify({
-                'message': 'File uploaded successfully',
-                'document': {
-                    'id': document.id,
-                    'filename': document.filename,
-                    'type': 'cv',
-                    'processing_status': 'completed'
-                }
-            }), 201
-            
+            if file:
+                filename = secure_filename(file.filename)
+                user_id = get_jwt_identity()
+                
+                # Create user directory if it doesn't exist
+                user_dir = os.path.join(app.config['UPLOAD_FOLDER'], str(user_id))
+                os.makedirs(user_dir, exist_ok=True)
+                
+                # Save file
+                file_path = os.path.join(user_dir, filename)
+                file.save(file_path)
+                
+                # Get document type from request
+                document_type = request.form.get('document_type', 'cv')  # Default to 'cv' if not specified
+                
+                # Create document record
+                document = Document(
+                    filename=filename,
+                    path=file_path,
+                    document_type=document_type,
+                    user_id=user_id
+                )
+                
+                db.session.add(document)
+                db.session.commit()
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'File uploaded successfully',
+                    'document': document.to_dict()
+                }), 201
+                
         except Exception as e:
             logger.error(f'[upload_document] Error: {str(e)}')
-            logger.exception(e)
             return jsonify({'error': str(e)}), 500
 
-    @app.route('/api/documents/<int:document_id>/status', methods=['GET'])
+    @app.route('/api/documents/<int:document_id>', methods=['GET'])
     @jwt_required()
-    def get_document_status(document_id):
-        """Get the status of a document."""
+    def get_document(document_id):
         try:
-            current_user = get_jwt_identity()
-            document = Document.query.filter_by(id=document_id, user_id=current_user).first()
+            user_id = get_jwt_identity()
+            document = Document.query.filter_by(id=document_id, user_id=user_id).first()
             
             if not document:
-                logger.error(f'[get_document_status] Document not found: {document_id}')
                 return jsonify({'error': 'Document not found'}), 404
                 
-            return jsonify({
-                'id': document.id,
-                'filename': document.filename,
-                'processing_status': 'completed'  # For now, we'll assume it's always completed
-            })
-            
-        except Exception as e:
-            logger.error(f'[get_document_status] Error: {str(e)}')
-            logger.exception(e)
-            return jsonify({'error': str(e)}), 500
-
-    @app.route('/api/jobs/parse', methods=['POST'])
-    @jwt_required()
-    def parse_job():
-        """Parse a job posting URL."""
-        try:
-            data = request.get_json()
-            url = data.get('url')
-            
-            if not url:
-                return jsonify({'error': 'URL is required'}), 400
-                
-            # Initialize scraper
-            scraper = JobScraper()
-            
-            # Scrape job posting
-            job_data = scraper.scrape_job_posting(url)
-            
-            # Store in database
-            job = JobResource(
-                url=url,
-                title=job_data.get('title', ''),
-                company=job_data.get('company', ''),
-                location=job_data.get('location', ''),
-                description=job_data.get('description', ''),
-                requirements=job_data.get('sections', {}).get('requirements', ''),
-                responsibilities=job_data.get('sections', {}).get('responsibilities', ''),
-                user_id=get_jwt_identity()
+            return send_from_directory(
+                os.path.dirname(document.path),
+                os.path.basename(document.path),
+                as_attachment=True
             )
             
-            db.session.add(job)
+        except Exception as e:
+            logger.error(f'[get_document] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/documents/<int:document_id>', methods=['DELETE'])
+    @jwt_required()
+    def delete_document(document_id):
+        try:
+            user_id = get_jwt_identity()
+            
+            # Find the document
+            document = Document.query.filter_by(
+                id=document_id,
+                user_id=user_id
+            ).first()
+            
+            if not document:
+                return jsonify({'error': 'Document not found'}), 404
+                
+            # Delete the file if it exists
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], document.filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                
+            # Delete from database
+            db.session.delete(document)
             db.session.commit()
             
             return jsonify({
-                'message': 'Job posting parsed successfully',
-                'job': {
-                    'id': job.id,
-                    'url': job.url,
-                    'title': job.title,
-                    'company': job.company,
-                    'location': job.location,
-                    'requirements': job.requirements,
-                    'responsibilities': job.responsibilities
-                }
-            }), 201
+                'success': True,
+                'message': 'Document deleted successfully'
+            }), 200
             
         except Exception as e:
-            logger.error(f'[parse_job] Error: {str(e)}')
-            db.session.rollback()
+            logger.error(f'[delete_document] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/documents', methods=['GET'])
+    @jwt_required()
+    def get_documents():
+        try:
+            user_id = get_jwt_identity()
+            documents = Document.query.filter_by(user_id=user_id).all()
+            
+            return jsonify({
+                'documents': [doc.to_dict() for doc in documents]
+            }), 200
+            
+        except Exception as e:
+            logger.error(f'[get_documents] Error: {str(e)}')
             return jsonify({'error': str(e)}), 500
 
     @app.route('/api/documents/cv', methods=['GET'])
     @jwt_required()
     def get_user_cv():
-        """Get the user's most recent CV."""
         try:
-            current_user = get_jwt_identity()
-            
-            # Get user's most recent CV
-            cv = Document.query.filter_by(
-                user_id=current_user,
-                type='cv'
-            ).order_by(Document.created_at.desc()).first()
+            user_id = get_jwt_identity()
+            cv = Document.query.filter_by(user_id=user_id, document_type='cv').order_by(Document.created_at.desc()).first()
             
             if not cv:
-                return jsonify({'error': 'No CV found'}), 404
+                return jsonify({'message': 'No CV found'}), 404
                 
             return jsonify({
-                'id': cv.id,
-                'filename': cv.original_filename,
-                'uploadTime': cv.created_at.isoformat()
-            })
+                'cv': cv.to_dict()
+            }), 200
             
         except Exception as e:
             logger.error(f'[get_user_cv] Error: {str(e)}')
             return jsonify({'error': str(e)}), 500
 
+    @app.route('/api/documents/cv', methods=['DELETE'])
+    @jwt_required()
+    def delete_cv():
+        try:
+            user_id = get_jwt_identity()
+            
+            # Find the user's CV
+            cv = Document.query.filter_by(
+                user_id=user_id,
+                document_type='cv'
+            ).first()
+            
+            if not cv:
+                return jsonify({'error': 'CV not found'}), 404
+                
+            # Delete the file if it exists
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], cv.filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                
+            # Delete from database
+            db.session.delete(cv)
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'CV deleted successfully'
+            }), 200
+            
+        except Exception as e:
+            logger.error(f'[delete_cv] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/documents/<int:document_id>/status', methods=['GET'])
+    @jwt_required()
+    def get_document_status(document_id):
+        try:
+            user_id = get_jwt_identity()
+            document = Document.query.filter_by(id=document_id, user_id=user_id).first()
+            
+            if not document:
+                return jsonify({'error': 'Document not found'}), 404
+                
+            return jsonify({
+                'status': 'completed',  # For now, all uploads are considered completed immediately
+                'document': document.to_dict()
+            }), 200
+            
+        except Exception as e:
+            logger.error(f'[get_document_status] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/applications', methods=['POST'])
+    @jwt_required()
+    def create_application():
+        try:
+            data = request.get_json()
+            user_id = get_jwt_identity()
+            
+            application = Application(
+                job_title=data['job_title'],
+                company=data['company'],
+                url=data.get('url'),
+                description=data.get('description'),
+                user_id=user_id,
+                cv_id=data.get('cv_id')
+            )
+            
+            db.session.add(application)
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Application created successfully',
+                'application': {
+                    'id': application.id,
+                    'job_title': application.job_title,
+                    'company': application.company,
+                    'status': application.status,
+                    'created_at': application.created_at.isoformat()
+                }
+            }), 201
+            
+        except KeyError as e:
+            logger.error(f'[create_application] Missing field: {str(e)}')
+            return jsonify({'error': f'Missing field: {str(e)}'}), 400
+            
+        except Exception as e:
+            logger.error(f'[create_application] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/applications', methods=['GET'])
+    @jwt_required()
+    def get_applications():
+        try:
+            user_id = get_jwt_identity()
+            applications = Application.query.filter_by(user_id=user_id).all()
+            
+            return jsonify({
+                'applications': [{
+                    'id': app.id,
+                    'job_title': app.job_title,
+                    'company': app.company,
+                    'status': app.status,
+                    'created_at': app.created_at.isoformat()
+                } for app in applications]
+            }), 200
+            
+        except Exception as e:
+            logger.error(f'[get_applications] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
     @app.route('/api/jobs', methods=['GET'])
     @jwt_required()
     def get_user_jobs():
-        """Get all jobs added by the user."""
         try:
-            current_user = get_jwt_identity()
+            user_id = get_jwt_identity()
             
-            # Get user's jobs
-            jobs = JobResource.query.filter_by(
-                user_id=current_user
-            ).order_by(JobResource.created_at.desc()).all()
+            # Get all jobs for the user
+            jobs = Application.query.filter_by(user_id=user_id).all()
             
             return jsonify([{
                 'id': job.id,
-                'url': job.url,
-                'title': job.title,
+                'job_title': job.job_title,
                 'company': job.company,
-                'created_at': job.created_at.isoformat()
-            } for job in jobs])
+                'url': job.url,
+                'description': job.description,
+                'status': job.status,
+                'created_at': job.created_at.isoformat(),
+                'updated_at': job.updated_at.isoformat()
+            } for job in jobs]), 200
             
         except Exception as e:
-            logger.error(f'[get_user_jobs] Error: {str(e)}')
             return jsonify({'error': str(e)}), 500
 
     @app.route('/api/jobs/urls', methods=['POST'])
     @jwt_required()
     def add_job_url():
-        """Add a new job URL."""
         try:
-            current_user = get_jwt_identity()
+            user_id = get_jwt_identity()
             data = request.get_json()
-            url = data.get('url')
             
-            if not url:
+            if not data or 'url' not in data:
                 return jsonify({'error': 'URL is required'}), 400
+            
+            if 'job_title' not in data:
+                return jsonify({'error': 'Job title is required'}), 400
                 
-            # Create new job resource
-            job = JobResource(
-                url=url,
-                user_id=current_user,
-                title='New Position',  # We'll update this later with scraping
-                company='Company Name'  # We'll update this later with scraping
+            if 'company_name' not in data:
+                return jsonify({'error': 'Company name is required'}), 400
+                
+            # Create a new job application with the URL
+            application = Application(
+                user_id=user_id,
+                url=data['url'],
+                job_title=data['job_title'],
+                company=data['company_name']
             )
             
-            db.session.add(job)
+            db.session.add(application)
             db.session.commit()
             
             return jsonify({
-                'id': job.id,
-                'url': job.url,
-                'title': job.title,
-                'company': job.company,
-                'created_at': job.created_at.isoformat()
+                'success': True,
+                'data': {
+                    'id': application.id,
+                    'url': application.url,
+                    'job_title': application.job_title,
+                    'company': application.company,
+                    'created_at': application.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                }
             }), 201
             
         except Exception as e:
             logger.error(f'[add_job_url] Error: {str(e)}')
-            db.session.rollback()
             return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/jobs/urls/<int:job_id>', methods=['DELETE'])
+    @jwt_required()
+    def delete_job_url(job_id):
+        try:
+            user_id = get_jwt_identity()
+            
+            # Find the job
+            job = Application.query.filter_by(
+                id=job_id,
+                user_id=user_id
+            ).first()
+            
+            if not job:
+                return jsonify({'error': 'Job not found'}), 404
+                
+            # Delete from database
+            db.session.delete(job)
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Job deleted successfully'
+            }), 200
+            
+        except Exception as e:
+            logger.error(f'[delete_job_url] Error: {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+    return app

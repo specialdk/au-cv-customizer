@@ -16,7 +16,7 @@ const api = axios.create({
 // Add a request interceptor
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -39,16 +39,15 @@ api.interceptors.response.use(
   }
 );
 
-export const getAuthToken = () => localStorage.getItem('token');
+export const getAuthToken = () => localStorage.getItem('access_token');
 
 export const setAuthToken = (token: string) => {
-  localStorage.setItem('token', token);
-  // Update axios default headers
+  localStorage.setItem('access_token', token);
   api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 };
 
 export const clearAuthToken = () => {
-  localStorage.removeItem('token');
+  localStorage.removeItem('access_token');
   delete api.defaults.headers.common['Authorization'];
 };
 
@@ -58,11 +57,11 @@ export const login = async (email: string, password: string) => {
     const response = await api.post('/api/login', { email, password });
     console.log('API login response:', response.data);
 
-    if (response.data.token) {
-      setAuthToken(response.data.token);
+    if (response.data.access_token) {
+      setAuthToken(response.data.access_token);
       // Store user info in localStorage
       if (response.data.user) {
-        console.log('Storing user in localStorage:', response.data.user); // Debug log
+        console.log('Storing user in localStorage:', response.data.user);
         localStorage.setItem('user', JSON.stringify(response.data.user));
       }
     }
@@ -90,8 +89,8 @@ export const register = async (email: string, password: string, name: string) =>
     });
     console.log('API register response:', response.data);
 
-    if (response.data.token) {
-      setAuthToken(response.data.token);
+    if (response.data.access_token) {
+      setAuthToken(response.data.access_token);
       if (response.data.user) {
         localStorage.setItem('user', JSON.stringify(response.data.user));
       }
@@ -100,6 +99,9 @@ export const register = async (email: string, password: string, name: string) =>
     return response.data;
   } catch (error) {
     console.error('API Error:', error);
+    if (axios.isAxiosError(error) && error.response?.data?.error) {
+      throw new Error(error.response.data.error);
+    }
     throw error;
   }
 };
@@ -117,6 +119,13 @@ export const getDocumentStatus = async (documentId: number) => {
 interface UploadResponse {
   success: boolean;
   message: string;
+  document?: {
+    id: number;
+    filename: string;
+    document_type: string;
+    created_at: string;
+    updated_at: string | null;
+  };
   cancelPolling: () => void;
 }
 
@@ -130,7 +139,7 @@ export const uploadCV = async (file: File, onProgress?: (status: string) => void
     console.log('API uploadCV request:', JSON.stringify({ file: file.name }, null, 2));
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('type', 'cv'); // Add document type
+    formData.append('document_type', 'cv'); // Set document type to cv
   
     const response = await api.post('/api/documents/upload', formData, {
       headers: {
@@ -148,36 +157,23 @@ export const uploadCV = async (file: File, onProgress?: (status: string) => void
       // Poll for status every 2 seconds
       const pollStatus = async () => {
         try {
-          // Check if polling was cancelled
-          if (isPollingCancelled) {
-            console.log('Polling cancelled');
-            return;
-          }
-
-          const statusResponse = await api.get(`/api/documents/${response.data.document.id}/status`, {
-            signal: abortController.signal
-          });
+          const statusResponse = await api.get(`/api/documents/${response.data.document.id}/status`);
           console.log('Status response:', statusResponse.data);
           
-          if (statusResponse.data.processing_status === 'completed') {
-            onProgress?.('completed');
-            return statusResponse.data;
-          } else if (statusResponse.data.processing_status === 'failed') {
-            onProgress?.('failed');
-            throw new Error('CV processing failed');
-          } else {
-            // Continue polling if still processing
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            return pollStatus();
-          }
-        } catch (error: unknown) {
-          if (error instanceof Error && (error.name === 'AbortError' || isPollingCancelled)) {
-            console.log('Polling aborted');
+          if (statusResponse.data.status === 'completed') {
+            isPollingCancelled = true; // Stop polling when complete
             return;
           }
-          console.error('Status polling error:', error);
-          onProgress?.('failed');
-          throw error;
+          
+          if (!isPollingCancelled) {
+            setTimeout(pollStatus, 1000);
+          }
+        } catch (error) {
+          if (!isPollingCancelled) {
+            console.error('Error polling status:', error);
+            onProgress?.('failed');
+            throw error;
+          }
         }
       };
       
@@ -194,6 +190,7 @@ export const uploadCV = async (file: File, onProgress?: (status: string) => void
     return {
       success: response.data.success,
       message: response.data.message,
+      document: response.data.document,
       cancelPolling: () => {
         console.log('Cancelling polling');
         isPollingCancelled = true;
@@ -318,14 +315,16 @@ export const deleteCV = async (documentId: number) => {
     console.log('API deleteCV request:', JSON.stringify({ documentId }, null, 2));
     const response = await api.delete(`/api/documents/${documentId}`);
     console.log('API deleteCV response:', JSON.stringify(response.data, null, 2));
-    return response.data;
-  } catch (error: unknown) {
-    if (axios.isAxiosError(error)) {
-      console.error('Delete CV Error:', error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
-    } else {
-      console.error('Unexpected Delete CV Error:', error);
-    }
-    throw error;
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Error deleting CV:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete CV'
+    };
   }
 };
 
@@ -336,6 +335,50 @@ export interface JobURL {
   company_name: string;
   created_at: string;
 }
+
+export const deleteJobUrl = async (jobId: number) => {
+  try {
+    const response = await api.delete(`/api/jobs/urls/${jobId}`);
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Error deleting job URL:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete job URL'
+    };
+  }
+};
+
+export const addJobUrl = async ({ 
+  url, 
+  job_title, 
+  company_name 
+}: { 
+  url: string;
+  job_title: string;
+  company_name: string;
+}) => {
+  try {
+    const response = await api.post('/api/jobs/urls', { 
+      url,
+      job_title,
+      company_name
+    });
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('Error adding job URL:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to add job URL'
+    };
+  }
+};
 
 export const createJobURL = async (data: { 
   url: string; 
@@ -564,22 +607,6 @@ export const getUserJobs = async () => {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to get jobs'
-    };
-  }
-};
-
-export const addJobUrl = async ({ url }: { url: string }) => {
-  try {
-    const response = await api.post('/api/jobs/urls', { url });
-    return {
-      success: true,
-      data: response.data
-    };
-  } catch (error) {
-    console.error('Error adding job URL:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to add job URL'
     };
   }
 };

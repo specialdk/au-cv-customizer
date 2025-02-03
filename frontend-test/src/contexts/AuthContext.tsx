@@ -36,13 +36,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await api.login(email, password);
       console.log('Login response:', response);
 
-      if (!response.token || !response.user) {
+      if (!response.access_token || !response.user) {
         console.log(' Login response missing token or user:', response);
         throw new Error('Invalid login response');
       }
 
       // Store token
-      api.setAuthToken(response.token);
+      api.setAuthToken(response.access_token);
       
       // Store user data
       setUser(response.user);
