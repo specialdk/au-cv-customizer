@@ -39,6 +39,42 @@ api.interceptors.response.use(
   }
 );
 
+export interface JobURL {
+  id: number;
+  url: string;
+  job_title: string;
+  company: string;
+  created_at: string;
+}
+
+export interface JobDetails {
+  url: string;
+  job_title: string;
+  company: string;
+}
+
+export const getJobURLs = async (): Promise<JobURL[]> => {
+  const response = await api.get('/api/jobs/urls');
+  return response.data;
+};
+
+export const addJobUrl = async (details: JobDetails): Promise<JobURL> => {
+  const response = await api.post('/api/jobs/urls', details);
+  return response.data.data; // Backend returns { success: true, data: JobURL }
+};
+
+export const deleteJobURL = async (urlId: number): Promise<void> => {
+  await api.delete(`/api/jobs/urls/${urlId}`);
+};
+
+export const analyzeJobMatch = async (cvData: any, jobUrl: string) => {
+  const response = await api.post('/api/analyze/job-match', {
+    cv_data: cvData,
+    job_url: jobUrl,
+  });
+  return response.data;
+};
+
 export const getAuthToken = () => localStorage.getItem('access_token');
 
 export const setAuthToken = (token: string) => {
@@ -234,12 +270,12 @@ export const uploadCV = async (file: File, onProgress?: (status: string) => void
 
 export const createApplication = async (
   jobTitle: string, 
-  companyName: string, 
+  company: string, 
   jobUrl: string
 ) => {
   try {
-    console.log('API createApplication request:', JSON.stringify({ jobTitle, companyName, jobUrl }, null, 2));
-    const response = await api.post('/api/applications', { jobTitle, companyName, jobUrl });
+    console.log('API createApplication request:', JSON.stringify({ jobTitle, company, jobUrl }, null, 2));
+    const response = await api.post('/api/applications', { jobTitle, company, jobUrl });
     console.log('API createApplication response:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: unknown) {
@@ -328,98 +364,11 @@ export const deleteCV = async (documentId: number) => {
   }
 };
 
-export interface JobURL {
-  id: number;
-  url: string;
-  job_title: string;
-  company_name: string;
-  created_at: string;
-}
-
-export const deleteJobUrl = async (jobId: number) => {
-  try {
-    const response = await api.delete(`/api/jobs/urls/${jobId}`);
-    return {
-      success: true,
-      data: response.data
-    };
-  } catch (error) {
-    console.error('Error deleting job URL:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete job URL'
-    };
-  }
-};
-
-export const addJobUrl = async ({ 
-  url, 
-  job_title, 
-  company_name 
-}: { 
-  url: string;
-  job_title: string;
-  company_name: string;
-}): Promise<JobURL> => {
-  try {
-    console.log('API addJobUrl request:', JSON.stringify({ url, job_title, company_name }, null, 2));
-    const response = await api.post('/api/jobs/urls', { 
-      url,
-      job_title,
-      company_name
-    });
-    console.log('API addJobUrl response:', JSON.stringify(response.data, null, 2));
-    return response.data.data;
-  } catch (error) {
-    console.error('Error adding job URL:', error);
-    if (axios.isAxiosError(error)) {
-      console.error('Error details:', error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
-    }
-    throw error;
-  }
-};
-
-export const getJobURLs = async (): Promise<JobURL[]> => {
-  try {
-    console.log('API getJobURLs request');
-    const response = await api.get('/api/job-urls');
-    console.log('API getJobURLs response:', JSON.stringify(response.data, null, 2));
-    return response.data;
-  } catch (error: unknown) {
-    if (axios.isAxiosError(error)) {
-      console.error('Get Job URLs Error:', error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
-    } else {
-      console.error('Unexpected Get Job URLs Error:', error);
-    }
-    throw error;
-  }
-};
-
-export const deleteJobURL = async (urlId: number): Promise<void> => {
-  try {
-    console.log('API deleteJobURL request:', JSON.stringify({ urlId }, null, 2));
-    await api.delete(`/api/job-urls/${urlId}`);
-  } catch (error: unknown) {
-    if (axios.isAxiosError(error)) {
-      console.error('Delete Job URL Error:', error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
-    } else {
-      console.error('Unexpected Delete Job URL Error:', error);
-    }
-    throw error;
-  }
-};
-
 export interface JobResource {
   id: number;
   type: 'url' | 'document';
   content: string;
   created_at: string;
-}
-
-export interface JobDetails {
-  url: string;
-  job_title: string;
-  company_name?: string;
 }
 
 export const createJobDocument = async (resource: { 
@@ -435,7 +384,7 @@ export const createJobDocument = async (resource: {
         ? resource.content 
         : JSON.stringify(resource.content);
       
-      const response = await api.post('/api/job-urls', {
+      const response = await api.post('/api/jobs/urls', {
         url: typeof resource.content === 'string' 
           ? resource.content 
           : (resource.content as JobDetails).url,
@@ -444,10 +393,10 @@ export const createJobDocument = async (resource: {
           : (resource.content as JobDetails).job_title,
         company_name: typeof resource.content === 'string'
           ? ''
-          : (resource.content as JobDetails).company_name
+          : (resource.content as JobDetails).company
       });
       console.log('API createJobDocument response:', JSON.stringify(response.data, null, 2));
-      return response.data;
+      return response.data.data; // Backend returns { success: true, data: JobResource }
     } else {
       // Handle document upload
       formData.append('file', resource.content as File);
@@ -590,8 +539,19 @@ export const getUserJobs = async () => {
   }
 };
 
+// CV-Job Matching endpoints
+export const getCurrentCV = async () => {
+  return api.get('/api/cv/current');
+};
+
+export const storeMatchSelections = async (selectedMatches: any[]) => {
+  return api.post('/api/analyze/store-selections', { selected_matches: selectedMatches });
+};
+
 // Initialize auth header if token exists
 const token = getAuthToken();
 if (token) {
   api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 }
+
+export default api;

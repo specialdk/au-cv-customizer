@@ -1,45 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Button,
   TextField,
+  Button,
   Typography,
-  Paper,
+  CircularProgress,
+  Alert,
   List,
   ListItem,
   ListItemText,
+  ListItemSecondaryAction,
   IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  CircularProgress,
-  Chip,
-  Alert,
-  Snackbar,
-  Stack,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem
+  Checkbox,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { getJobURLs, addJobUrl, deleteJobURL } from '../services/api';
-
-interface JobURL {
-  id: number;
-  url: string;
-  job_title: string;
-  company_name: string;
-  created_at: string;
-}
+import * as api from '../services/api';
+import MatchAnalysis from './MatchAnalysis';
+import { JobURL, MatchPoint } from '../types';
+import { useNavigate } from 'react-router-dom';
 
 interface JobURLManagerProps {
-  onURLAdded?: () => void;
   onJobCountChange?: (count: number) => void;
 }
 
-const JobURLManager: React.FC<JobURLManagerProps> = ({ onURLAdded, onJobCountChange }) => {
+const JobURLManager: React.FC<JobURLManagerProps> = ({ onJobCountChange }) => {
   const [jobUrls, setJobUrls] = useState<JobURL[]>([]);
   const [newUrl, setNewUrl] = useState('');
   const [jobTitle, setJobTitle] = useState('');
@@ -47,27 +34,32 @@ const JobURLManager: React.FC<JobURLManagerProps> = ({ onURLAdded, onJobCountCha
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  const fetchJobUrls = async () => {
-    try {
-      setLoading(true);
-      const urls = await getJobURLs();
-      setJobUrls(urls);
-      if (onJobCountChange) {
-        onJobCountChange(urls.length);
-      }
-    } catch (err) {
-      setError('Failed to fetch job URLs');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<{ match_points: MatchPoint[], overall_score: number } | null>(null);
+  const [appliedJobs, setAppliedJobs] = useState<Set<number>>(new Set());
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchJobUrls();
   }, []);
 
-  const handleAddUrl = async () => {
+  const fetchJobUrls = async () => {
+    try {
+      setLoading(true);
+      const urls = await api.getJobURLs();
+      setJobUrls(urls);
+      if (onJobCountChange) {
+        onJobCountChange(urls.length);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch job URLs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddUrl = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!newUrl || !jobTitle || !companyName) {
       setError('Please fill in all fields');
       return;
@@ -75,21 +67,18 @@ const JobURLManager: React.FC<JobURLManagerProps> = ({ onURLAdded, onJobCountCha
 
     try {
       setLoading(true);
-      await addJobUrl({
+      await api.addJobUrl({
         url: newUrl,
         job_title: jobTitle,
-        company_name: companyName
+        company: companyName
       });
+      setSuccess('Job URL added successfully');
       setNewUrl('');
       setJobTitle('');
       setCompanyName('');
-      setSuccess('Job URL added successfully');
-      if (onURLAdded) {
-        onURLAdded();
-      }
       await fetchJobUrls();
     } catch (err) {
-      setError('Failed to add job URL');
+      setError(err instanceof Error ? err.message : 'Failed to add job URL');
     } finally {
       setLoading(false);
     }
@@ -98,68 +87,180 @@ const JobURLManager: React.FC<JobURLManagerProps> = ({ onURLAdded, onJobCountCha
   const handleDeleteUrl = async (id: number) => {
     try {
       setLoading(true);
-      await deleteJobURL(id);
+      await api.deleteJobURL(id);
       setSuccess('Job URL deleted successfully');
       await fetchJobUrls();
     } catch (err) {
-      setError('Failed to delete job URL');
+      setError(err instanceof Error ? err.message : 'Failed to delete job URL');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleAnalyzeUrl = async (url: string) => {
+    setSelectedUrl(url);
+    try {
+      setLoading(true);
+      const result = await api.analyzeJobMatch({}, url);
+      setAnalysisResult(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze job match');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyForJob = async (jobUrl: JobURL) => {
+    try {
+      setLoading(true);
+      await api.createApplication(jobUrl.job_title, jobUrl.company, jobUrl.url);
+      setSuccess('Application created successfully');
+      setAppliedJobs(prev => new Set([...prev, jobUrl.id]));
+      navigate('/applications');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create application');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseAnalysis = () => {
+    setSelectedUrl(null);
+    setAnalysisResult(null);
+  };
+
+  const handleAnalysisProceed = async (selectedMatches: MatchPoint[]) => {
+    try {
+      await api.storeMatchSelections(selectedMatches);
+      handleCloseAnalysis();
+      setSuccess('Match analysis saved successfully');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save match analysis');
+    }
+  };
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="h6" gutterBottom>
+        Job URLs
+      </Typography>
+
+      {error && (
+        <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {success && (
+        <Alert severity="success" onClose={() => setSuccess(null)} sx={{ mb: 2 }}>
+          {success}
+        </Alert>
+      )}
+
+      <Box component="form" onSubmit={handleAddUrl} sx={{ mb: 3 }}>
         <TextField
+          fullWidth
           label="Job URL"
           value={newUrl}
           onChange={(e) => setNewUrl(e.target.value)}
-          fullWidth
-          size="small"
+          margin="normal"
+          required
         />
         <TextField
+          fullWidth
           label="Job Title"
           value={jobTitle}
           onChange={(e) => setJobTitle(e.target.value)}
-          fullWidth
-          size="small"
+          margin="normal"
+          required
         />
         <TextField
+          fullWidth
           label="Company Name"
           value={companyName}
           onChange={(e) => setCompanyName(e.target.value)}
-          fullWidth
-          size="small"
+          margin="normal"
+          required
         />
         <Button
+          type="submit"
           variant="contained"
-          onClick={handleAddUrl}
           disabled={loading}
+          sx={{ mt: 2 }}
         >
-          {loading ? <CircularProgress size={24} /> : 'Add URL'}
+          Add Job URL
         </Button>
       </Box>
 
-      <Snackbar
-        open={!!error}
-        autoHideDuration={6000}
-        onClose={() => setError(null)}
-      >
-        <Alert onClose={() => setError(null)} severity="error">
-          {error}
-        </Alert>
-      </Snackbar>
+      <List>
+        {jobUrls.map((jobUrl) => (
+          <ListItem key={jobUrl.id}>
+            <ListItemText
+              primary={jobUrl.job_title}
+              secondary={
+                <>
+                  {jobUrl.company}
+                  <br />
+                  {jobUrl.url}
+                </>
+              }
+            />
+            <ListItemSecondaryAction>
+              {jobUrls.length > 0 && !appliedJobs.has(jobUrl.id) && (
+                <Button
+                  onClick={() => handleApplyForJob(jobUrl)}
+                  disabled={loading}
+                  variant="contained"
+                  color="primary"
+                  sx={{ mr: 1 }}
+                >
+                  Apply
+                </Button>
+              )}
+              <Button
+                onClick={() => handleAnalyzeUrl(jobUrl.url)}
+                disabled={loading}
+                sx={{ mr: 1 }}
+              >
+                Analyze
+              </Button>
+              <IconButton
+                edge="end"
+                onClick={() => handleDeleteUrl(jobUrl.id)}
+                disabled={loading}
+              >
+                <DeleteIcon />
+              </IconButton>
+            </ListItemSecondaryAction>
+          </ListItem>
+        ))}
+      </List>
 
-      <Snackbar
-        open={!!success}
-        autoHideDuration={6000}
-        onClose={() => setSuccess(null)}
+      {loading && (
+        <Box display="flex" justifyContent="center" p={3}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      <Dialog
+        open={!!selectedUrl && !!analysisResult}
+        onClose={handleCloseAnalysis}
+        maxWidth="md"
+        fullWidth
       >
-        <Alert onClose={() => setSuccess(null)} severity="success">
-          {success}
-        </Alert>
-      </Snackbar>
+        <DialogTitle>Job Match Analysis</DialogTitle>
+        <DialogContent sx={{ p: 3 }}>
+          {selectedUrl && analysisResult && (
+            <MatchAnalysis
+              jobUrl={selectedUrl}
+              onClose={handleCloseAnalysis}
+              matches={analysisResult.match_points}
+              overallScore={analysisResult.overall_score}
+              onProceed={handleAnalysisProceed}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

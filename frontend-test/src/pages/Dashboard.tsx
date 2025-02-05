@@ -94,16 +94,11 @@ const Dashboard: React.FC = () => {
 
   const handleDeleteJob = async (jobId: number) => {
     try {
-      const response = await api.deleteJobUrl(jobId);
-      if (response.success) {
-        setJobs(jobs.filter(job => job.id !== jobId));
-        setMessage('Job deleted successfully');
-      } else {
-        setError('Failed to delete job');
-      }
-    } catch (err) {
-      console.error('Error deleting job:', err);
-      setError(err instanceof Error ? err.message : 'Error deleting job');
+      await api.deleteJobURL(jobId);
+      setJobs(jobs.filter(job => job.id !== jobId));
+      setMessage('Job deleted successfully');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to delete job');
     }
   };
 
@@ -127,7 +122,7 @@ const Dashboard: React.FC = () => {
           setJobs(jobsResponse.data.map((job: any, index: number) => ({
             id: index,
             title: job.job_title || 'Untitled Position',
-            company: job.company_name || 'Company Not Specified',
+            company: job.company || 'Company Not Specified',
             addedAt: formatDate(job.created_at)
           })));
         }
@@ -182,17 +177,17 @@ const Dashboard: React.FC = () => {
     }
 
     try {
-      const response = await api.addJobUrl({ 
+      const response = await api.addJobUrl({
         url: jobUrl,
         job_title: jobTitle,
-        company_name: company
+        company: company || ''  // Ensure it's always a string
       });
       
       setJobs([
         {
           id: response.id,
           title: response.job_title,
-          company: response.company_name,
+          company: response.company || '',  // Ensure it's always a string
           addedAt: formatDate(response.created_at)
         },
         ...jobs
